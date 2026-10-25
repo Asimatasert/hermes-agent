@@ -46,6 +46,25 @@ describe('buildGatewaySessionGroups', () => {
     expect(legacy.label).toBe(legacy.profile)
     expect(registry.connections.some(connection => legacy.label.includes(connection.label))).toBe(false)
   })
+
+  it('gives every roster profile a group, even one with no listed sessions', () => {
+    const groups = buildGatewaySessionGroups(
+      rows,
+      registry,
+      {},
+      {
+        connectionId: 'local',
+        profiles: ['default', 'reviewer']
+      }
+    )
+
+    expect(members(groups)).toEqual({
+      [JSON.stringify(['local', 'default'])]: ['a', 'd'],
+      [JSON.stringify(['local', 'reviewer'])]: [],
+      [JSON.stringify(['remote-1', 'default'])]: ['b'],
+      [JSON.stringify([null, 'default'])]: ['c']
+    })
+  })
 })
 
 describe('scopeGatewaySessionGroups', () => {

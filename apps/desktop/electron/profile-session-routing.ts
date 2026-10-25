@@ -586,6 +586,19 @@ export async function fetchRegistrySessionRows(
   return rows
 }
 
+function adoptRegistryOwner(existing: unknown, registryRow: unknown): void {
+  if (!existing || typeof existing !== 'object' || !registryRow || typeof registryRow !== 'object') {
+    return
+  }
+
+  const owner = (registryRow as { connection_id?: unknown }).connection_id
+  const target = existing as Record<string, unknown>
+
+  if (typeof owner === 'string' && owner && !(typeof target.connection_id === 'string' && target.connection_id)) {
+    target.connection_id = owner
+  }
+}
+
 /** Splice registry-gateway rows into an already-merged unified list: dedupe by
  *  profile + session id (a v1 remote-override splice may already carry a row), keep the
  *  recency sort, and extend the per-profile totals so truncation flags stay
@@ -596,18 +609,33 @@ export function spliceRegistrySessionRows(
   registryRows: unknown[],
   profileTotals: Record<string, number>
 ): { added: number } {
-  const seen = new Set(merged.map(profileSessionId).filter((id): id is string => id !== null))
+  const seen = new Map<string, unknown>()
+
+  for (const row of merged) {
+    const id = profileSessionId(row)
+
+    if (id !== null) {
+      seen.set(id, row)
+    }
+  }
+
   let added = 0
 
   for (const row of registryRows) {
     const id = profileSessionId(row)
 
     if (id && seen.has(id)) {
+      // The primary aggregate's rows carry no connection_id. When the primary
+      // IS a registered gateway (global remote mode), its rows and this
+      // registry read are the same session: keep the registry owner, or the
+      // row falls into an unlabeled legacy group instead of its gateway.
+      adoptRegistryOwner(seen.get(id), row)
+
       continue
     }
 
     if (id) {
-      seen.add(id)
+      seen.set(id, row)
     }
 
     merged.push(row)

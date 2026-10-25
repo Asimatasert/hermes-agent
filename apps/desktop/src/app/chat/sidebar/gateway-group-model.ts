@@ -9,25 +9,37 @@ import { $profileColors, normalizeProfileKey } from '@/store/profile'
 
 import type { SidebarSessionGroup } from './projects/workspace-groups'
 
+/** A gateway's full profile list. Its profiles get a group even with no
+ *  listed sessions: a profile that only runs kanban/cron/subagent work has no
+ *  recents, and "all profiles" must still show it (and its + button). */
+export interface GatewayProfileRoster {
+  connectionId: null | string
+  profiles: string[]
+}
+
 /** One group per exact owner `[connectionId, profile]`. Group identity never
  *  depends on a mutable label, URL, or the active gateway. */
 export function buildGatewaySessionGroups(
   sessions: SessionInfo[],
   registry: DesktopConnectionsRegistry | null,
-  colors: Record<string, string>
+  colors: Record<string, string>,
+  roster?: GatewayProfileRoster | null
 ): SidebarSessionGroup[] {
   const groups = new Map<string, SidebarSessionGroup>()
 
-  for (const session of sessions) {
-    const profile = normalizeProfileKey(session.profile)
-    const connectionId = session.connection_id || null
+  const groupFor = (connectionId: null | string, profile: string): SidebarSessionGroup => {
     const id = JSON.stringify([connectionId, profile])
-    const gateway = registry?.connections.find(connection => connection.id === connectionId)
-    const label = connectionId ? `${gateway?.label || connectionId} · ${profile}` : profile
+    const existing = groups.get(id)
 
-    const group: SidebarSessionGroup = groups.get(id) ?? {
+    if (existing) {
+      return existing
+    }
+
+    const gateway = registry?.connections.find(connection => connection.id === connectionId)
+
+    const group: SidebarSessionGroup = {
       id,
-      label,
+      label: connectionId ? `${gateway?.label || connectionId} · ${profile}` : profile,
       connectionId,
       profile,
       mode: 'profile',
@@ -36,8 +48,17 @@ export function buildGatewaySessionGroups(
       sessions: []
     }
 
-    group.sessions.push(session)
     groups.set(id, group)
+
+    return group
+  }
+
+  for (const session of sessions) {
+    groupFor(session.connection_id || null, normalizeProfileKey(session.profile)).sessions.push(session)
+  }
+
+  for (const profile of roster?.profiles ?? []) {
+    groupFor(roster!.connectionId, normalizeProfileKey(profile))
   }
 
   return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id))
@@ -57,12 +78,16 @@ export function scopeGatewaySessionGroups(groups: SidebarSessionGroup[], scope: 
   }))
 }
 
-export function useGatewaySessionGroups(sessions: SessionInfo[], enabled: boolean) {
+export function useGatewaySessionGroups(
+  sessions: SessionInfo[],
+  enabled: boolean,
+  roster?: GatewayProfileRoster | null
+) {
   const registry = useStore($connectionsRegistry)
   const colors = useStore($profileColors)
 
   return useMemo(
-    () => (enabled ? buildGatewaySessionGroups(sessions, registry, colors) : undefined),
-    [sessions, enabled, registry, colors]
+    () => (enabled ? buildGatewaySessionGroups(sessions, registry, colors, roster) : undefined),
+    [sessions, enabled, registry, colors, roster]
   )
 }

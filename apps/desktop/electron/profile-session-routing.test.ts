@@ -514,6 +514,29 @@ test('a registry source that overlaps the primary base is counted once, not twic
   assert.equal(profileTotals.default, 650)
 })
 
+test('an untagged primary row adopts the owner of the registry gateway that serves it', () => {
+  // Global remote mode: the primary aggregate IS registry gateway R, but its
+  // rows carry no connection_id. The duplicate registry read must not leave the
+  // kept row ownerless, or the sidebar files it under an unlabeled legacy group.
+  const merged: unknown[] = [
+    { id: 'shared', profile: 'default' },
+    { id: 'tagged', profile: 'default', connection_id: 'local' }
+  ]
+
+  const registryRows = [
+    { id: 'shared', profile: 'default', connection_id: 'R' },
+    { id: 'tagged', profile: 'default', connection_id: 'R' }
+  ]
+
+  const { added } = spliceRegistrySessionRows(merged, registryRows, {})
+
+  assert.equal(added, 0)
+  assert.deepEqual(
+    merged.map(row => (row as { connection_id?: string }).connection_id),
+    ['R', 'local']
+  )
+})
+
 // Independent review (RT-42): overlap was extrapolated from the first fetched page, so a
 // half-overlapping primary gave 325 or 975 for a 650-session union depending on which half
 // it held. Drive both partial cases through mergeRegistrySessionRows, the real entry point.

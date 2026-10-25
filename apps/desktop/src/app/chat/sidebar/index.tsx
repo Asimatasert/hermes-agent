@@ -153,7 +153,12 @@ import { type NewSessionSplitHandler, startNewSessionDrag } from '../new-session
 import { SidebarSectionAddButton } from './chrome'
 import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarFilterMenu } from './filter-menu'
-import { buildGatewaySessionGroups, scopeGatewaySessionGroups, useGatewaySessionGroups } from './gateway-group-model'
+import {
+  buildGatewaySessionGroups,
+  type GatewayProfileRoster,
+  scopeGatewaySessionGroups,
+  useGatewaySessionGroups
+} from './gateway-group-model'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { orderByIds, reconcileOrderIds, resolveManualSessionOrderIds, sameIds } from './order'
 import { filterSessionsByProfileScope } from './profile-scope'
@@ -1370,7 +1375,22 @@ export function ChatSidebar({
   // Recents and every messaging platform resolve owner groups the same way
   // ([connectionId, profile]), so a platform's groups line up with recents.
   const ownerGrouped = profileScope === ALL_PROFILES && grouping === 'profile'
-  const profileGroups = useGatewaySessionGroups(agentSessions, ownerGrouped)
+
+  // Every profile on the active gateway gets a group in the unfiltered "all
+  // profiles" view, even with no recents (kanban/cron-only profiles list none).
+  // Its owner id follows the rows this gateway already tagged; untagged rows
+  // stay legacy-unassigned, so an empty group never guesses a gateway either.
+  const profileRoster = useMemo<GatewayProfileRoster | null>(() => {
+    if (!ownerGrouped || showArchived || filtersNarrow || trimmedQuery) {
+      return null
+    }
+
+    const tagged = Boolean(activeConnectionId) && sessions.some(s => s.connection_id === activeConnectionId)
+
+    return { connectionId: tagged ? activeConnectionId : null, profiles: profiles.map(profile => profile.name) }
+  }, [ownerGrouped, showArchived, filtersNarrow, trimmedQuery, activeConnectionId, sessions, profiles])
+
+  const profileGroups = useGatewaySessionGroups(agentSessions, ownerGrouped, profileRoster)
   const connectionsRegistry = useStore($connectionsRegistry)
   const profileColors = useStore($profileColors)
 
